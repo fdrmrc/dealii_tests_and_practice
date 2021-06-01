@@ -1,16 +1,18 @@
 # dealii_practice
-Test cases repo for the dealii C++ finite element library. Steps are exported as C++ Eclipse project as follows:
+Test cases repo for the dealii C++ finite element library. Problems can be exported as C++ Eclipse project as follows:
 
-- `cmake -G "Eclipse CDT4 - Unix Makefiles" .` (don't miss the . at the end)
+- Create a CMakeLists.txt with 'target' the name of your problem.cc file.
+From command line, type
+- `cmake .` to detect C/CXX compilers
+- `cmake -G "Eclipse CDT4 - Unix Makefiles" .` (don't miss the `.` at the end)
 
 Now move to Eclipse IDE:
 
-- New MakeFile project with existing code
-- Select LinuxGCC or MacOSX GCC compiler
+- File -> Import -> Existing Project into Workspace
 - Browse directory of current project
 
-This allows you to compile. To run the resulting executable:
-- Run configurations -> New launch configuration: write the name of the executable
+
+You can compile and then run using targets or as usual from command line using make commands (see `make info` to know how to switch from debug/release mode)
 
 ![Screenshot](3d_L_shaped/3d_l_shaped.png)
 
