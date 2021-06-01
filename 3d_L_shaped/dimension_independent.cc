@@ -107,7 +107,6 @@ Problem<dim>::Problem()
 template <int dim>
 void Problem<dim>::make_grid(const unsigned int n_refs)
 {
-//  GridGenerator::hyper_cube(triangulation, -1, 1);
 	GridGenerator::hyper_L(triangulation, -1.0, 1.0);
  // triangulation.begin_active()->face(0)->set_boundary_id(1); //first unique cell has one boundary with indicator 1, which will be propagated after refinements
   triangulation.refine_global(n_refs);
@@ -115,7 +114,7 @@ void Problem<dim>::make_grid(const unsigned int n_refs)
   std::cout << "Number of active cells: " << triangulation.n_active_cells()
             << std::endl;
 
-  // If you wanna know how many cells there are, namely the parent cell, its parent, etc., you have
+
   std::cout << "Number of cells (including parent cells): " << triangulation.n_cells()<<"\n";
 }
 
@@ -146,7 +145,7 @@ void Problem<dim>::assemble_system()
   FEValues<dim> fe_values(fe,
                         quadrature_formula,
                         update_values | update_gradients| update_quadrature_points | update_JxW_values);
-  //provide you with information about values and gradients of shape functions at quadrature points on a real cell.
+  //update also quadrature points!
   RightHandSide<dim> right_hand_side;
   const unsigned int dofs_per_cell = fe.dofs_per_cell; //ask the finite element to tell us about the number of degrees of freedom per cell
 
@@ -162,7 +161,7 @@ void Problem<dim>::assemble_system()
       cell_matrix = 0;
       cell_rhs    = 0; //reset local cell's contributions
 
-      for (const unsigned int q_index : fe_values.quadrature_point_indices()) // @suppress("Symbol is not resolved")
+      for (const unsigned int q_index : fe_values.quadrature_point_indices())
         {
           for (const unsigned int i : fe_values.dof_indices())
             for (const unsigned int j : fe_values.dof_indices())
@@ -172,7 +171,7 @@ void Problem<dim>::assemble_system()
                  fe_values.JxW(q_index));           // dx
 
           const auto x_q = fe_values.quadrature_point(q_index);
-          for (const unsigned int i : fe_values.dof_indices()) // @suppress("Symbol is not resolved")
+          for (const unsigned int i : fe_values.dof_indices())
             cell_rhs(i) += (fe_values.shape_value(i, q_index) * // phi_i(x_q)
                             right_hand_side.value(x_q)*                                 // f(x_q)
                             fe_values.JxW(q_index));            // dx
@@ -180,13 +179,13 @@ void Problem<dim>::assemble_system()
       //find out which GLOBAL numbers the degrees of freedom on this cell have
       cell->get_dof_indices(local_dof_indices);
 
-      for (const unsigned int i : fe_values.dof_indices()) //@suppress("Symbol is not resolved")
-        for (const unsigned int j : fe_values.dof_indices()) //@suppress("Symbol is not resolved")
+      for (const unsigned int i : fe_values.dof_indices())
+        for (const unsigned int j : fe_values.dof_indices())
           system_matrix.add(local_dof_indices[i],
                             local_dof_indices[j],
                             cell_matrix(i, j));
 
-      for (const unsigned int i : fe_values.dof_indices()) //@suppress("Symbol is not resolved")
+      for (const unsigned int i : fe_values.dof_indices())
         system_rhs(local_dof_indices[i]) += cell_rhs(i);
     }
 
@@ -198,11 +197,8 @@ void Problem<dim>::assemble_system()
                                            0, //boundary indicator on Dirichlet boundary
                                            BoundaryValues<dim>(),
 										   boundary_values);
-//  for(auto x : boundary_values ){
-//	  std::cout << x.first <<"\n";
-//  }
 
-  MatrixTools::apply_boundary_values(boundary_values, //modify the system of equations accordingly to boundary DoFs and their boundary values
+  MatrixTools::apply_boundary_values(boundary_values,
                                      system_matrix,
                                      solution,
                                      system_rhs);
@@ -270,6 +266,7 @@ int main()
   {
 	  Problem<2> laplace_problem;
 	  laplace_problem.run();
+	  laplace_problem.observe_convergence();
   }
 
   {
@@ -279,7 +276,6 @@ int main()
 
 
 
-  //laplace_problem.observe_convergence();
 
   return 0;
 }
