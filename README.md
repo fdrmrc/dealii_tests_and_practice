@@ -11,3 +11,6 @@ Now move to Eclipse IDE:
 
 This allows you to compile. To run the resulting executable:
 - Run configurations -> New launch configuration: write the name of the executable
+
+![Screenshot](3d_L_shaped/3d_l_shaped.png)
+
