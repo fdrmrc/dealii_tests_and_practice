@@ -14,5 +14,5 @@ Now move to Eclipse IDE:
 
 You can compile and then run using targets or as usual from command line using make commands (see `make info` to know how to switch from debug/release mode)
 
-![Screenshot](3d_L_shaped/3d_l_shaped.png)
+![Screenshot](adaptive_refinement_kelly_estimator/3D_fichera_corner_adaptive.png)
 
