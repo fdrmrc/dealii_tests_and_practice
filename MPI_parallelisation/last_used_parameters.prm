@@ -1,0 +1,41 @@
+subsection Error table
+  set Enable computation of the errors = true
+  set Error file name                  = 
+  set Error precision                  = 3
+  set Exponent for p-norms             = 2
+  set Extra columns                    = cells, dofs
+  set List of error norms to compute   = L2_norm, Linfty_norm, H1_norm
+  set Rate key                         = dofs
+  set Rate mode                        = reduction_rate_log2
+end
+subsection Poisson<2>
+  set Coarsening and refinement factors         = 0.03 : 0.3
+  set Coefficient expression                    = 1
+  set Dirichlet boundary condition expression   = 0
+  set Dirichlet boundary ids                    = 0
+  set Estimator type                            = exact
+  set Exact solution expression                 = 0
+  set Finite element degree                     = 1
+  set Forcing term expression                   = 1
+  set Grid generator arguments                  = 0: 1: false
+  set Grid generator function                   = hyper_cube
+  set Local pre-refinement grid size expression = 0
+  set Mapping degree                            = 1
+  set Marking strategy                          = global
+  set Neumann boundary condition expression     = 0
+  set Neumann boundary ids                      = 
+  set Number of global refinements              = 4
+  set Number of refinement cycles               = 1
+  set Number of threads                         = -1
+  set Output filename                           = poisson
+  set Problem constants                         = 
+  set Use direct solver                         = true
+end
+subsection Solver control
+  set Log frequency = 1
+  set Log history   = false
+  set Log result    = true
+  set Max steps     = 100
+  set Reduction     = 1.e-2
+  set Tolerance     = 1.e-10
+end
