@@ -18,7 +18,7 @@ You can compile and then run using Eclipse targets or as usual from command line
 
 # Parameter handler 
 
-After that a ``test_parameter_file.prm` has been generated, to run the executable with your new parameters, without recompiling all the project, type `./main test_parameter_file.prm`.
+After that a `test_parameter_file.prm` has been generated, to run the executable with your new parameters, without recompiling all the project, type `./main test_parameter_file.prm`.
 To run on multiple processors, just use `mpirun` as usual ``mpirun -np 4 ./main test_parameter_file.prm` (here I run on 4 processors)
 
 
