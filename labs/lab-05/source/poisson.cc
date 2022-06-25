@@ -23,7 +23,11 @@ using namespace dealii;
 
 template <int dim>
 Poisson<dim>::Poisson()
-  : dof_handler(triangulation)
+  : mpi_communicator{MPI_COMM_WORLD}
+  , n_mpi_processes{Utilities::MPI::n_mpi_processes(mpi_communicator)}
+  , this_mpi_process{Utilities::MPI::this_mpi_process(mpi_communicator)}
+  , pcout{std::cout, (this_mpi_process == 0)}
+  , dof_handler(triangulation)
 {
   add_parameter("Finite element degree", fe_degree);
   add_parameter("Number of global refinements", n_refinements);
@@ -75,8 +79,8 @@ Poisson<dim>::make_grid()
                                                   grid_generator_function,
                                                   grid_generator_arguments);
   triangulation.refine_global(n_refinements);
-  std::cout << "Number of active cells: " << triangulation.n_active_cells()
-            << std::endl;
+  pcout << "Number of active cells: " << triangulation.n_active_cells()
+        << std::endl;
 }
 
 
@@ -116,10 +120,11 @@ Poisson<dim>::setup_system()
         neumann_boundary_conditions_expression,
         constants);
     }
+  GridTools::partition_triangulation(n_mpi_processes, triangulation);
 
   dof_handler.distribute_dofs(*fe);
-  std::cout << "Number of degrees of freedom: " << dof_handler.n_dofs()
-            << std::endl;
+
+  DoFRenumbering::subdomain_wise(dof_handler);
   constraints.clear();
   DoFTools::make_hanging_node_constraints(dof_handler, constraints);
 
@@ -133,10 +138,19 @@ Poisson<dim>::setup_system()
 
   DynamicSparsityPattern dsp(dof_handler.n_dofs());
   DoFTools::make_sparsity_pattern(dof_handler, dsp, constraints, false);
-  sparsity_pattern.copy_from(dsp);
-  system_matrix.reinit(sparsity_pattern);
-  solution.reinit(dof_handler.n_dofs());
-  system_rhs.reinit(dof_handler.n_dofs());
+
+  const std::vector<IndexSet> locally_owned_dofs_per_process =
+    DoFTools::locally_owned_dofs_per_subdomain(dof_handler);
+  const IndexSet locally_owned_dofs =
+    locally_owned_dofs_per_process[this_mpi_process];
+
+
+  system_matrix.reinit(locally_owned_dofs,
+                       locally_owned_dofs,
+                       dsp,
+                       mpi_communicator);
+  solution.reinit(locally_owned_dofs, mpi_communicator);
+  system_rhs.reinit(locally_owned_dofs, mpi_communicator);
 }
 
 
@@ -164,56 +178,71 @@ Poisson<dim>::assemble_system()
   std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
   for (const auto &cell : dof_handler.active_cell_iterators())
     {
-      fe_values.reinit(cell);
-      cell_matrix = 0;
-      cell_rhs    = 0;
-      for (const unsigned int q_index : fe_values.quadrature_point_indices())
+      if (cell->subdomain_id() == this_mpi_process)
         {
-          for (const unsigned int i : fe_values.dof_indices())
-            for (const unsigned int j : fe_values.dof_indices())
-              cell_matrix(i, j) +=
-                (fe_values.shape_grad(i, q_index) * // grad phi_i(x_q)
-                 fe_values.shape_grad(j, q_index) * // grad phi_j(x_q)
-                 fe_values.JxW(q_index));           // dx
-          for (const unsigned int i : fe_values.dof_indices())
-            cell_rhs(i) += (fe_values.shape_value(i, q_index) * // phi_i(x_q)
-                            forcing_term.value(
-                              fe_values.quadrature_point(q_index)) * // f(x_q)
-                            fe_values.JxW(q_index));                 // dx
-        }
-
-      if (cell->at_boundary())
-        //  for(const auto face: cell->face_indices())
-        for (unsigned int f = 0; f < GeometryInfo<dim>::faces_per_cell; ++f)
-          if (neumann_ids.find(cell->face(f)->boundary_id()) !=
-              neumann_ids.end())
+          fe_values.reinit(cell);
+          cell_matrix = 0;
+          cell_rhs    = 0;
+          for (const unsigned int q_index :
+               fe_values.quadrature_point_indices())
             {
-              fe_face_values.reinit(cell, f);
-              for (const unsigned int q_index :
-                   fe_face_values.quadrature_point_indices())
-                for (const unsigned int i : fe_face_values.dof_indices())
-                  cell_rhs(i) += fe_face_values.shape_value(i, q_index) *
-                                 neumann_boundary_condition.value(
-                                   fe_face_values.quadrature_point(q_index)) *
-                                 fe_face_values.JxW(q_index);
+              for (const unsigned int i : fe_values.dof_indices())
+                for (const unsigned int j : fe_values.dof_indices())
+                  cell_matrix(i, j) +=
+                    (fe_values.shape_grad(i, q_index) * // grad phi_i(x_q)
+                     fe_values.shape_grad(j, q_index) * // grad phi_j(x_q)
+                     fe_values.JxW(q_index));           // dx
+              for (const unsigned int i : fe_values.dof_indices())
+                cell_rhs(i) +=
+                  (fe_values.shape_value(i, q_index) * // phi_i(x_q)
+                   forcing_term.value(
+                     fe_values.quadrature_point(q_index)) * // f(x_q)
+                   fe_values.JxW(q_index));                 // dx
             }
 
-      cell->get_dof_indices(local_dof_indices);
-      constraints.distribute_local_to_global(
-        cell_matrix, cell_rhs, local_dof_indices, system_matrix, system_rhs);
+          if (cell->at_boundary())
+            //  for(const auto face: cell->face_indices())
+            for (unsigned int f = 0; f < GeometryInfo<dim>::faces_per_cell; ++f)
+              if (neumann_ids.find(cell->face(f)->boundary_id()) !=
+                  neumann_ids.end())
+                {
+                  fe_face_values.reinit(cell, f);
+                  for (const unsigned int q_index :
+                       fe_face_values.quadrature_point_indices())
+                    for (const unsigned int i : fe_face_values.dof_indices())
+                      cell_rhs(i) +=
+                        fe_face_values.shape_value(i, q_index) *
+                        neumann_boundary_condition.value(
+                          fe_face_values.quadrature_point(q_index)) *
+                        fe_face_values.JxW(q_index);
+                }
+
+          cell->get_dof_indices(local_dof_indices);
+          constraints.distribute_local_to_global(cell_matrix,
+                                                 cell_rhs,
+                                                 local_dof_indices,
+                                                 system_matrix,
+                                                 system_rhs);
+        }
     }
+  system_matrix.compress(VectorOperation::add);
+  system_rhs.compress(VectorOperation::add);
 }
 
 
 
 template <int dim>
-void
+unsigned int
 Poisson<dim>::solve()
 {
   SolverControl            solver_control(1000, 1e-12);
-  SolverCG<Vector<double>> solver(solver_control);
-  solver.solve(system_matrix, solution, system_rhs, PreconditionIdentity());
-  constraints.distribute(solution);
+  PETScWrappers::SolverCG  solver(solver_control, mpi_communicator);
+  PETScWrappers::PreconditionBlockJacobi preconditioner(system_matrix);
+  solver.solve(system_matrix, solution, system_rhs, preconditioner);
+  Vector<double> localized_solution(solution);
+  constraints.distribute(localized_solution);
+  solution = localized_solution;
+  return solver_control.last_step();
 }
 
 
@@ -222,13 +251,26 @@ template <int dim>
 void
 Poisson<dim>::output_results(const unsigned cycle) const
 {
-  DataOut<dim> data_out;
-  data_out.attach_dof_handler(dof_handler);
-  data_out.add_data_vector(solution, "solution");
-  data_out.build_patches();
-  std::string   fname = output_filename + "_" + std::to_string(cycle) + ".vtu";
-  std::ofstream output(fname);
-  data_out.write_vtu(output);
+  const Vector<double> localized_solution(solution);
+
+  if (this_mpi_process == 0)
+    {
+      std::ofstream fname{"solution" + std::to_string(cycle) + ".vtk"};
+      DataOut<dim>  data_out;
+      data_out.attach_dof_handler(dof_handler);
+      data_out.add_data_vector(localized_solution, "u");
+
+      std::vector<unsigned int> partition_int(triangulation.n_active_cells());
+      GridTools::get_subdomain_association(triangulation, partition_int);
+
+      const Vector<double> partitioning(partition_int.begin(),
+                                        partition_int.end());
+
+      data_out.add_data_vector(partitioning, "partitioning");
+
+      data_out.build_patches();
+      data_out.write_vtk(fname);
+    }
 }
 
 
@@ -240,17 +282,25 @@ Poisson<dim>::run()
   make_grid();
   for (unsigned int cycle = 0; cycle < n_refinement_cycles; ++cycle)
     {
+      pcout << "Cycle: " << cycle << std::endl;
       setup_system();
+
+      pcout << "   Number of degrees of freedom: " << dof_handler.n_dofs()
+            << " (by partition:";
+      for (unsigned int p = 0; p < n_mpi_processes; ++p)
+        pcout << (p == 0 ? ' ' : '+')
+              << (DoFTools::count_dofs_with_subdomain_association(dof_handler,
+                                                                  p));
+      pcout << ')' << std::endl;
+
       assemble_system();
-      solve();
-      error_table.error_from_exact(dof_handler,
-                                   solution,
-                                   dirichlet_boundary_condition);
+      const unsigned int n_iter = solve();
+      pcout << "Solver converged in " << n_iter << " iterations" << std::endl;
+
       output_results(cycle);
       if (cycle < n_refinement_cycles - 1)
         refine_grid();
     }
-  error_table.output_table(std::cout);
 }
 
 template class Poisson<1>;

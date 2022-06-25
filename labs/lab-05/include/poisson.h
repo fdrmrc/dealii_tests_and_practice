@@ -22,27 +22,38 @@
 #ifndef poisson_include_file
 #define poisson_include_file
 
+#include <deal.II/base/conditional_ostream.h>
 #include <deal.II/base/function.h>
 #include <deal.II/base/function_parser.h>
+#include <deal.II/base/logstream.h>
+#include <deal.II/base/mpi.h>
+#include <deal.II/base/multithread_info.h>
 #include <deal.II/base/parameter_acceptor.h>
 #include <deal.II/base/parsed_convergence_table.h>
 #include <deal.II/base/quadrature_lib.h>
 
 #include <deal.II/dofs/dof_handler.h>
+#include <deal.II/dofs/dof_renumbering.h>
 #include <deal.II/dofs/dof_tools.h>
 
 #include <deal.II/fe/fe_q.h>
 #include <deal.II/fe/fe_values.h>
 
 #include <deal.II/grid/grid_generator.h>
+#include <deal.II/grid/grid_tools.h>
 #include <deal.II/grid/tria.h>
 
 #include <deal.II/lac/affine_constraints.h>
 #include <deal.II/lac/dynamic_sparsity_pattern.h>
 #include <deal.II/lac/full_matrix.h>
+#include <deal.II/lac/petsc_precondition.h>
+#include <deal.II/lac/petsc_solver.h>
+#include <deal.II/lac/petsc_sparse_matrix.h>
+#include <deal.II/lac/petsc_vector.h>
 #include <deal.II/lac/precondition.h>
 #include <deal.II/lac/solver_cg.h>
 #include <deal.II/lac/sparse_matrix.h>
+#include <deal.II/lac/sparsity_tools.h>
 #include <deal.II/lac/vector.h>
 
 #include <deal.II/numerics/data_out.h>
@@ -81,24 +92,33 @@ protected:
   setup_system();
   void
   assemble_system();
-  void
+  unsigned int
   solve();
   void
   output_results(const unsigned cycle) const;
+
+  MPI_Comm           mpi_communicator;
+  const unsigned int n_mpi_processes;
+  const unsigned int this_mpi_process;
+  ConditionalOStream pcout;
 
   Triangulation<dim>         triangulation;
   std::unique_ptr<FE_Q<dim>> fe;
   DoFHandler<dim>            dof_handler;
   AffineConstraints<double>  constraints;
   SparsityPattern            sparsity_pattern;
-  SparseMatrix<double>       system_matrix;
-  Vector<double>             solution;
-  Vector<double>             system_rhs;
+  PETScWrappers::MPI::SparseMatrix system_matrix;
+  PETScWrappers::MPI::Vector       solution;
+  PETScWrappers::MPI::Vector       system_rhs;
+
+
 
   FunctionParser<dim> forcing_term;
   FunctionParser<dim> dirichlet_boundary_condition;
   FunctionParser<dim> neumann_boundary_condition;
-
+  // Only needed changes for MPI
+  IndexSet locally_owned_dofs;
+  IndexSet locally_relevant_dofs;
 
   unsigned int fe_degree           = 1;
   unsigned int n_refinements       = 4;
